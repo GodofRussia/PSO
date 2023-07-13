@@ -2,12 +2,17 @@
 #include <cmath>
 #include <random>
 #include <vector>
+#include <stack>
+#include <string>
+#include <sstream>
 #include <algorithm>
 #include <limits.h>
+#include <functional>
 #include <GL/glut.h>
 
 using std::vector;
 using std::pair;
+using std::stack;
 using std::string;
 
 struct Particle {
@@ -32,9 +37,7 @@ public:
         double minX, double maxX) : number_particles(number_particles),
         number_iterations(number_iterations),
         dimensions(dimensions), minX(minX), maxX(maxX)
-    {
-        initializeSwarm();
-    }
+    { }
 
     void initializeSwarm() {
         std::random_device rd;
@@ -73,9 +76,107 @@ public:
         }
     }
 
-    void set_function(string func) { }
-    double fitness_function(vector<double> args) {
-        return 3.0 + (args[0] * args[0]) + (args[1] * args[1]);
+    bool hasHigherPrecedence(char op1, char op2) {
+        if (op1 == '(' || op2 == '(') {
+            return false;
+        } else if ((op1 == '*' || op1 == '/') && (op2 == '+' || op2 == '-')) {
+            return false;
+        } else if (op1 == 's' && (op2 == '+' || op2 == '-')) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    void performOperation(std::stack<double>& operandStack, std::stack<char>& operatorStack) {
+        char op = operatorStack.top();
+        operatorStack.pop();
+
+        if (op == 's') {
+            double operand = operandStack.top();
+            operandStack.pop();
+            operandStack.push(std::sqrt(operand));
+        } else {
+            double operand2 = operandStack.top();
+            operandStack.pop();
+            double operand1 = operandStack.top();
+            operandStack.pop();
+
+            switch (op) {
+                case '+':
+                    operandStack.push(operand1 + operand2);
+                    break;
+                case '-':
+                    operandStack.push(operand1 - operand2);
+                    break;
+                case '*':
+                    operandStack.push(operand1 * operand2);
+                    break;
+                case '/':
+                    operandStack.push(operand1 / operand2);
+                    break;
+            }
+        }
+    }
+
+    void default_function() {
+        fitness_function = [this](const std::vector<double>& coordinates) {
+            return sqrt(coordinates[0] * coordinates[0] + coordinates[1] * coordinates[1]);
+        };
+    }
+
+    // format: X3 = 
+    void set_function(string func) {
+        std::istringstream iss(func);
+        std::string token;
+        std::vector<std::string> tokens;
+
+        // Разбиваем строку на токены
+        while (iss >> token) {
+            tokens.push_back(token);
+        }
+
+        // Создаем лямбда-функцию, которая будет выполнять вычисления
+        auto function = [tokens, this](const std::vector<double>& coordinates) {
+            std::stack<double> operandStack;
+            std::stack<char> operatorStack;
+            double result = 0.0;
+
+            for (const auto& token : tokens) {
+                if (token == "X1") {
+                    operandStack.push(coordinates[0]);
+                } else if (token == "X2") {
+                    operandStack.push(coordinates[1]);
+                } else if (token == "+" || token == "-" || token == "*" || token == "/") {
+                    while (!operatorStack.empty() && operatorStack.top() != '(' && hasHigherPrecedence(token[0], operatorStack.top())) {
+                        performOperation(operandStack, operatorStack);
+                    }
+                    operatorStack.push(token[0]);
+                } else if (token == "(") {
+                    operatorStack.push('(');
+                } else if (token == ")") {
+                    while (!operatorStack.empty() && operatorStack.top() != '(') {
+                        performOperation(operandStack, operatorStack);
+                    }
+                    operatorStack.pop();
+                } else if (token == "sqrt") {
+                    operatorStack.push('s');
+                } else {
+                    std::istringstream valueIss(token);
+                    double value = 0.0;
+                    valueIss >> value;
+                    operandStack.push(value);
+                }
+            }
+
+            while (!operatorStack.empty()) {
+                performOperation(operandStack, operatorStack);
+            }
+
+            return operandStack.top();
+        };
+
+        fitness_function = function;
     }
 
     void calculate_min() {
@@ -199,8 +300,14 @@ public:
         glPointSize(5.0);
         glBegin(GL_POINTS);
         glVertex3d(min_x, min_y, min_z);
-        glEnd();
 
+        // Затем максимум
+        double max_x = bestMaxGlobalPosition[0];
+        double max_y = bestMaxGlobalPosition[1];
+        double max_z = fitness_function({max_x, max_y});
+        glVertex3d(max_x, max_y, max_z);
+        
+        glEnd();
         glutSwapBuffers();
     }
 
@@ -232,6 +339,8 @@ private:
 
     vector<Particle> min_swarm, max_swarm;
 
+    std::function<double(const std::vector<double>&)> fitness_function;
+
     friend Particle;
 };
 
@@ -239,7 +348,11 @@ ParticalSwarm* ParticalSwarm::instance = nullptr;
 
 int main(int argc, char** argv) {
     // Задаём константы: количество итераций, количество частиц, число пространств и рамки для координаты minX - maxX
-    ParticalSwarm swarm(1000, 1000, 2, -100, 100);
+    ParticalSwarm swarm(1000, 10, 2, -1000, 1000);
+    // swarm.default_function();
+    swarm.set_function("3 + X1");
+    
+    swarm.initializeSwarm();
     swarm.calculate_max();
     swarm.calculate_min();
 
