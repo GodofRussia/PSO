@@ -348,9 +348,9 @@ ParticalSwarm* ParticalSwarm::instance = nullptr;
 
 int main(int argc, char** argv) {
     // Задаём константы: количество итераций, количество частиц, число пространств и рамки для координаты minX - maxX
-    ParticalSwarm swarm(1000, 10, 2, -1000, 1000);
+    ParticalSwarm swarm(1000, 100, 2, -1000000, 1000000);
     // swarm.default_function();
-    swarm.set_function("3 + X1");
+    swarm.set_function("3 + X1 * X1 + X2 * X2");
     
     swarm.initializeSwarm();
     swarm.calculate_max();
